@@ -1,6 +1,7 @@
 package main
 
 import (
+	"container/list"
 	"fmt"
 	"go/doc"
 	"log"
@@ -59,7 +60,7 @@ func isSitemap(urls []string) ([]string, []string) {
 }
 
 func extractSiteMapURLs(startURL string) []string {
-	Worklist := make(chan []string)
+	worklist := make(chan []string)
 	toCrawl := []string{}
 
 	var n int
@@ -68,7 +69,7 @@ func extractSiteMapURLs(startURL string) []string {
 
 	for ; n > 0; n-- {
 
-	list := <-Worklist
+	list := <-worklist
 	for _, link := range list {
 		n++
 		go func() {
@@ -111,6 +112,7 @@ func makeRequest(url string) (*http.Response, error) {
 	return res, nil
 }
 
+
 func extractUrls(res *http.Response) ([]string, error) {
 	doc, err :=  goquery.NewDocumentFromResponse(res)
 	if err != nil {
@@ -126,9 +128,33 @@ func extractUrls(res *http.Response) ([]string, error) {
 	return results, nil
 }
 
-// func scrapeURLs() {
-
-// }
+func scrapeURLs(urls []string, parser parser, concurrency int) []SeoData {
+	tokens := make(chan struct{}, concurrency)
+	var n int
+	Worklist := make(chan []string)
+	results := []SeoData{}
+	go func() {
+		worklist <- urls
+	}()
+	for ; n > 0; n-- {
+		list := <- worklist
+		for _, url := range list {
+			if url != "" {
+				n++
+				go func(url string, token chan struct{}) {
+					log.Printf("Requesting URL:%s", url)
+					res, err := scrapePage(url, tokens, parser)
+					if err != nil {
+						log.Printf("Encountered error, URL: %s", url)
+					} else {
+						results = append(results, res)
+					}
+					worklist <- []string
+				}(url, tokens)
+			}
+		}
+	}
+}
 
 func scrapePage(url string) (SeoData, error) {
 	res, err := crawlPage(url)
@@ -146,9 +172,9 @@ func crawlPag() {
 
 }
 
-func scrapeSiteMap() {
+func ScrapeSiteMap(url string, parser parser, concurrency int) []SeoData {
 	results := extractSiteMapURLs(url)
-	res := scrapeURLs(results)
+	res := scrapeURLs(results, parser, concurrency)
 	return res
 }
 
@@ -169,7 +195,7 @@ func (d DefaultParser) getSEOData(res *http.Response) (SeoData, error) {
 
 func main() {
 	p := DefaultParser{}
-	result := scrapesitemap("")
+	result := Scrapesitemap("https://www.quicksprout.com/sitemap.xml", p, 10)
 
 	for _, res := range result {
 		fmt.Println(res)
