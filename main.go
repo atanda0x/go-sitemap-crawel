@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net/http"
 	"net/url"
 	"time"
 )
@@ -87,9 +88,16 @@ func extractSiteMapURLs(startURL string) []string {
 	return toCrawl
 }
 
-// func makeRequest() {
-
-// }
+func makeRequest(url string) (*http.Response, error) {
+	client := http.Client {
+		Timeout: 10 * time.Second,
+	}
+	req, err = http.NewRequest("GET", url, nil)
+	req.Header.Set("Usr Agent", randomAgent())
+	if err != nil {
+		return nil, err
+	}
+}
 
 // func scrapeURLs() {
 
