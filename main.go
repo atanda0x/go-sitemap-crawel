@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"math/rand"
+	"time"
 )
 
 type SeoData struct {
@@ -28,8 +30,10 @@ var userAgents = []string {
 	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13) AppleWebKit/604.1.38 (KHTML, like Gecko) Version/11.0 Safari/604.1.38",
 }
 
-func randomAgent() {
-
+func randomAgent() string{
+	rand.Seed(time.Now().Unix())
+	randNum := rand.Int() % len(userAgents)
+	return userAgents[randNum]
 }
 
 func extractSiteMapURLs(startURL string) []string {
