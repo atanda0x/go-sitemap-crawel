@@ -1,13 +1,10 @@
 package main
 
 import (
-	"container/list"
 	"fmt"
-	"go/doc"
 	"log"
 	"math/rand"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -29,7 +26,7 @@ type parser interface {
 type DefaultParser struct {
 }
 
-var userAgents = []string {
+var userAgents = []string{
 	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36",
 	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36",
 	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36",
@@ -38,7 +35,7 @@ var userAgents = []string {
 	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13) AppleWebKit/604.1.38 (KHTML, like Gecko) Version/11.0 Safari/604.1.38",
 }
 
-func randomUserAgent() string{
+func randomUserAgent() string {
 	rand.Seed(time.Now().Unix())
 	randNum := rand.Int() % len(userAgents)
 	return userAgents[randNum]
@@ -69,34 +66,35 @@ func extractSiteMapURLs(startURL string) []string {
 
 	for ; n > 0; n-- {
 
-	list := <-worklist
-	for _, link := range list {
-		n++
-		go func() {
-			response, err := makeRequest(link)
-			if err != nil {
-				log.Printf("Error retrieving URL:%s", &link)
-			}
-			urls, _ := extractUrls(response)
-			if err != nil {
-				log.Printf("Error extracting document from response, URL:%s", link)
-			}
+		list := <-worklist
+		for _, link := range list {
+			n++
+			go func() {
+				response, err := makeRequest(link)
+				if err != nil {
+					log.Printf("Error retrieving URL:%s", &link)
+				}
+				urls, _ := extractUrls(response)
+				if err != nil {
+					log.Printf("Error extracting document from response, URL:%s", link)
+				}
 
-			sitemapFiles, pages := isSitemap(urls)
-			if sitemapFiles != nil {
-				worklist <- sitemapFiles
-			}
+				sitemapFiles, pages := isSitemap(urls)
+				if sitemapFiles != nil {
+					worklist <- sitemapFiles
+				}
 
-			for _, page := range pages {
-				toCrawl = append(toCrawl, page)
-			}
-		}(link)
+				for _, page := range pages {
+					toCrawl = append(toCrawl, page)
+				}
+			}(link)
+		}
 	}
 	return toCrawl
 }
 
 func makeRequest(url string) (*http.Response, error) {
-	client := http.Client {
+	client := http.Client{
 		Timeout: 10 * time.Second,
 	}
 	req, err = http.NewRequest("GET", url, nil)
@@ -112,16 +110,15 @@ func makeRequest(url string) (*http.Response, error) {
 	return res, nil
 }
 
-
 func extractUrls(res *http.Response) ([]string, error) {
-	doc, err :=  goquery.NewDocumentFromResponse(res)
+	doc, err := goquery.NewDocumentFromResponse(res)
 	if err != nil {
 		return nil, err
 	}
 	results := []string{}
 	sel := doc.Find("loc")
 	for i = range sel.Nodes {
-		loca := sel.Eq(i)
+		loc := sel.Eq(i)
 		result := loc.Text()
 		results = append(results, result)
 	}
@@ -137,7 +134,7 @@ func scrapeURLs(urls []string, parser parser, concurrency int) []SeoData {
 		worklist <- urls
 	}()
 	for ; n > 0; n-- {
-		list := <- worklist
+		list := <-worklist
 		for _, url := range list {
 			if url != "" {
 				n++
@@ -156,8 +153,8 @@ func scrapeURLs(urls []string, parser parser, concurrency int) []SeoData {
 	}
 }
 
-func scrapePage(url string) (SeoData, error) {
-	res, err := crawlPage(url)
+func scrapePage(url string, token chan struct{}, parser parser) (SeoData, error) {
+	res, err := crawlPage(url, token)
 	if err != nil {
 		return seoData{}, err
 	}
@@ -168,8 +165,14 @@ func scrapePage(url string) (SeoData, error) {
 	return data, nil
 }
 
-func crawlPag() {
-
+func crawlPage(url string, tokens chan struct{}) (*http.Response, error) {
+	tokens <- struct{}{}
+	res, err := makeRequest(url)
+	<-tokens
+	if err != nil {
+		return nil, err
+	}
+	return res, err
 }
 
 func ScrapeSiteMap(url string, parser parser, concurrency int) []SeoData {
