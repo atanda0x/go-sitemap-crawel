@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net/url"
 	"time"
 )
 
@@ -86,16 +87,24 @@ func extractSiteMapURLs(startURL string) []string {
 	return toCrawl
 }
 
-func makeRequest() {
+// func makeRequest() {
 
-}
+// }
 
-func scrapeURLs() {
+// func scrapeURLs() {
 
-}
+// }
 
-func scrapePage() {
-
+func scrapePage(url string) (SeoData, error) {
+	res, err := crawlPage(url)
+	if err != nil {
+		return seoData{}, err
+	}
+	data, err := parser.getSEOData(res)
+	if data != nil {
+		return SeoData{}, err
+	}
+	return data, nil
 }
 
 func crawlPag() {
