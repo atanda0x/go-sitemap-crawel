@@ -35,7 +35,7 @@ var userAgents = []string {
 	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13) AppleWebKit/604.1.38 (KHTML, like Gecko) Version/11.0 Safari/604.1.38",
 }
 
-func randomAgent() string{
+func randomUserAgent() string{
 	rand.Seed(time.Now().Unix())
 	randNum := rand.Int() % len(userAgents)
 	return userAgents[randNum]
@@ -97,10 +97,16 @@ func makeRequest(url string) (*http.Response, error) {
 		Timeout: 10 * time.Second,
 	}
 	req, err = http.NewRequest("GET", url, nil)
-	req.Header.Set("Usr Agent", randomAgent())
+	req.Header.Set("Usr Agent", randomUserAgent())
 	if err != nil {
 		return nil, err
 	}
+
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
 // func scrapeURLs() {
