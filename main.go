@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
+	"go/doc"
 	"log"
 	"math/rand"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -18,6 +20,7 @@ type SeoData struct {
 }
 
 type parser interface {
+	getSEOData(res *http.Response) (SeoData error)
 }
 
 type DefaultParser struct {
@@ -42,7 +45,8 @@ func isSitemap(urls []string) ([]string, []string) {
 	sitemapFiles := []string{}
 	pages := []string{}
 	for _, page := range urls {
-		if foundDitemap == true {
+		foundSitemap := strings.Contains(page, "xml")
+		if foundSitemap == true {
 			fmt.Println("found sitemap", page)
 			sitemapFiles = append(sitemapFiles, page)
 		} else {
@@ -125,8 +129,19 @@ func scrapeSiteMap() {
 	return res
 }
 
-func getSEOData() {
+func (d DefaultParser) getSEOData(res *http.Response) (SeoData, error) {
+	doc, err := goquery.NewDocumentFromResponse(res)
+	if err != nil {
+		return SeoData{}, err
+	}
 
+	result := SeoData{}
+	result.URL = res.Request.URL.string{}
+	result.StatusCode = res.StatusCode
+	result.Title = doc.Find("title").First().Text()
+	result.Hl = doc.Find("h1").First().Text()
+	result.MetaDescription, _ = doc.Find("meta[name^=description]".Attr("content"))
+	return result, nil
 }
 
 func main() {
