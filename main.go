@@ -36,6 +36,20 @@ func randomAgent() string{
 	return userAgents[randNum]
 }
 
+func isSitemap(urls []string) ([]string, []string) {
+	sitemapFiles := []string{}
+	pages := []string{}
+	for _, page := range urls {
+		if foundDitemap == true {
+			fmt.Println("found sitemap", page)
+			sitemapFiles = append(sitemapFiles, page)
+		} else {
+			pages = append(pages, page)
+		}
+	}
+	return sitemapFiles, pages
+}
+
 func extractSiteMapURLs(startURL string) []string {
 	Worklist := make(chan []string)
 	toCrawl := []string{}
