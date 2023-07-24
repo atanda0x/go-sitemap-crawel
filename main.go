@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
 type SeoData struct {
@@ -107,6 +109,21 @@ func makeRequest(url string) (*http.Response, error) {
 		return nil, err
 	}
 	return res, nil
+}
+
+func extractUrls(res *http.Response) ([]string, error) {
+	doc, err :=  goquery.NewDocumentFromResponse(res)
+	if err != nil {
+		return nil, err
+	}
+	results := []string{}
+	sel := doc.Find("loc")
+	for i = range sel.Nodes {
+		loca := sel.Eq(i)
+		result := loc.Text()
+		results = append(results, result)
+	}
+	return results, nil
 }
 
 // func scrapeURLs() {
