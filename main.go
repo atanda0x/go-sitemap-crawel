@@ -11,18 +11,21 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
+// SeoData is a struct of useful SEO data
 type SeoData struct {
 	URL             string
 	Title           string
-	Hl              string
+	H1              string
 	MetaDescription string
 	StatusCode      int
 }
 
-type parser interface {
-	getSEOData(res *http.Response) (SeoData error)
+// Parser defines the parsing interface
+type Parser interface {
+	GetSeoData(resp *http.Response) (SeoData, error)
 }
 
+// DefaultParser is en empty struct for implmenting default parser
 type DefaultParser struct {
 }
 
@@ -47,7 +50,7 @@ func isSitemap(urls []string) ([]string, []string) {
 	for _, page := range urls {
 		foundSitemap := strings.Contains(page, "xml")
 		if foundSitemap == true {
-			fmt.Println("found sitemap", page)
+			fmt.Println("Found Sitemap", page)
 			sitemapFiles = append(sitemapFiles, page)
 		} else {
 			pages = append(pages, page)
@@ -56,34 +59,29 @@ func isSitemap(urls []string) ([]string, []string) {
 	return sitemapFiles, pages
 }
 
-func extractSiteMapURLs(startURL string) []string {
+func extractSitemapURLs(startURL string) []string {
 	worklist := make(chan []string)
 	toCrawl := []string{}
-
 	var n int
 	n++
-	go func(link string) { worklist <- []string{startURL} }()
-
+	go func() { worklist <- []string{startURL} }()
 	for ; n > 0; n-- {
-
 		list := <-worklist
 		for _, link := range list {
 			n++
-			go func() {
+			go func(link string) {
 				response, err := makeRequest(link)
 				if err != nil {
-					log.Printf("Error retrieving URL:%s", &link)
+					log.Printf("Error retrieving URL: %s", link)
 				}
 				urls, _ := extractUrls(response)
 				if err != nil {
-					log.Printf("Error extracting document from response, URL:%s", link)
+					log.Printf("Error extracting document from response, URL: %s", link)
 				}
-
 				sitemapFiles, pages := isSitemap(urls)
 				if sitemapFiles != nil {
 					worklist <- sitemapFiles
 				}
-
 				for _, page := range pages {
 					toCrawl = append(toCrawl, page)
 				}
@@ -97,12 +95,11 @@ func makeRequest(url string) (*http.Response, error) {
 	client := http.Client{
 		Timeout: 10 * time.Second,
 	}
-	req, err = http.NewRequest("GET", url, nil)
-	req.Header.Set("Usr Agent", randomUserAgent())
+	req, err := http.NewRequest("GET", url, nil)
+	req.Header.Set("User-Agent", randomUserAgent())
 	if err != nil {
 		return nil, err
 	}
-
 	res, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -110,14 +107,42 @@ func makeRequest(url string) (*http.Response, error) {
 	return res, nil
 }
 
-func extractUrls(res *http.Response) ([]string, error) {
-	doc, err := goquery.NewDocumentFromResponse(res)
+func scrapeUrls(urls []string, parser Parser, concurrency int) []SeoData {
+	tokens := make(chan struct{}, concurrency)
+	var n int
+	n++
+	worklist := make(chan []string)
+	results := []SeoData{}
+	go func() { worklist <- urls }()
+	for ; n > 0; n-- {
+		list := <-worklist
+		for _, url := range list {
+			if url != "" {
+				n++
+				go func(url string, token chan struct{}) {
+					log.Printf("Requesting URL: %s", url)
+					res, err := scrapePage(url, tokens, parser)
+					if err != nil {
+						log.Printf("Encountered error, URL: %s", url)
+					} else {
+						results = append(results, res)
+					}
+					worklist <- []string{}
+				}(url, tokens)
+			}
+		}
+	}
+	return results
+}
+
+func extractUrls(response *http.Response) ([]string, error) {
+	doc, err := goquery.NewDocumentFromResponse(response)
 	if err != nil {
 		return nil, err
 	}
 	results := []string{}
 	sel := doc.Find("loc")
-	for i = range sel.Nodes {
+	for i := range sel.Nodes {
 		loc := sel.Eq(i)
 		result := loc.Text()
 		results = append(results, result)
@@ -125,41 +150,13 @@ func extractUrls(res *http.Response) ([]string, error) {
 	return results, nil
 }
 
-func scrapeURLs(urls []string, parser parser, concurrency int) []SeoData {
-	tokens := make(chan struct{}, concurrency)
-	var n int
-	Worklist := make(chan []string)
-	results := []SeoData{}
-	go func() {
-		worklist <- urls
-	}()
-	for ; n > 0; n-- {
-		list := <-worklist
-		for _, url := range list {
-			if url != "" {
-				n++
-				go func(url string, token chan struct{}) {
-					log.Printf("Requesting URL:%s", url)
-					res, err := scrapePage(url, tokens, parser)
-					if err != nil {
-						log.Printf("Encountered error, URL: %s", url)
-					} else {
-						results = append(results, res)
-					}
-					worklist <- []string
-				}(url, tokens)
-			}
-		}
-	}
-}
-
-func scrapePage(url string, token chan struct{}, parser parser) (SeoData, error) {
+func scrapePage(url string, token chan struct{}, parser Parser) (SeoData, error) {
 	res, err := crawlPage(url, token)
 	if err != nil {
-		return seoData{}, err
+		return SeoData{}, err
 	}
-	data, err := parser.getSEOData(res)
-	if data != nil {
+	data, err := parser.GetSeoData(res)
+	if err != nil {
 		return SeoData{}, err
 	}
 	return data, nil
@@ -167,40 +164,40 @@ func scrapePage(url string, token chan struct{}, parser parser) (SeoData, error)
 
 func crawlPage(url string, tokens chan struct{}) (*http.Response, error) {
 	tokens <- struct{}{}
-	res, err := makeRequest(url)
+	resp, err := makeRequest(url)
 	<-tokens
 	if err != nil {
 		return nil, err
 	}
-	return res, err
+	return resp, err
 }
 
-func ScrapeSiteMap(url string, parser parser, concurrency int) []SeoData {
-	results := extractSiteMapURLs(url)
-	res := scrapeURLs(results, parser, concurrency)
-	return res
-}
-
-func (d DefaultParser) getSEOData(res *http.Response) (SeoData, error) {
-	doc, err := goquery.NewDocumentFromResponse(res)
+// GetSeoData concrete implementation of the default parser
+func (d DefaultParser) GetSeoData(resp *http.Response) (SeoData, error) {
+	doc, err := goquery.NewDocumentFromResponse(resp)
 	if err != nil {
 		return SeoData{}, err
 	}
-
 	result := SeoData{}
-	result.URL = res.Request.URL.string{}
-	result.StatusCode = res.StatusCode
+	result.URL = resp.Request.URL.String()
+	result.StatusCode = resp.StatusCode
 	result.Title = doc.Find("title").First().Text()
-	result.Hl = doc.Find("h1").First().Text()
-	result.MetaDescription, _ = doc.Find("meta[name^=description]".Attr("content"))
+	result.H1 = doc.Find("h1").First().Text()
+	result.MetaDescription, _ = doc.Find("meta[name^=description]").Attr("content")
 	return result, nil
+}
+
+// ScrapeSitemap scrapes a given sitemap
+func ScrapeSitemap(url string, parser Parser, concurrency int) []SeoData {
+	results := extractSitemapURLs(url)
+	res := scrapeUrls(results, parser, concurrency)
+	return res
 }
 
 func main() {
 	p := DefaultParser{}
-	result := Scrapesitemap("https://www.quicksprout.com/sitemap.xml", p, 10)
-
-	for _, res := range result {
+	results := ScrapeSitemap("https://www.quicksprout.com/sitemap.xml", p, 10)
+	for _, res := range results {
 		fmt.Println(res)
 	}
 }
